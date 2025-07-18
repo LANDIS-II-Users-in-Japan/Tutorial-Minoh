@@ -1,0 +1,10 @@
+LandisData	"Ecoregions"		
+
+>> 	Map Code		
+>>Active	Name	Description
+>>--------------------------------------------------------			
+no  0   100     "Non-forest"
+yes	1	101		"Test1"
+yes	2	102		"Test2"
+
+

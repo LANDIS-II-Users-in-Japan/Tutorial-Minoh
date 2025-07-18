@@ -1,0 +1,6 @@
+SpeciesCode,LeafLongevity,WoodDecayRate,MortalityCurve,GrowthCurve,LeafLignin,ShadeTolerance,FireTolerance
+crypjapo   ,3,0.1,10,0.25,0.183,2,1
+chamobtu   ,3,0.1,10,0.25,0.183,3,1
+pinudens   ,3,0.1,10,0.25,0.183,2,1
+querserr   ,1,0.1,10,0.25,0.183,1,1
+

@@ -1,0 +1,10 @@
+LandisData  Species
+>> 片岡ら 2021より
+
+>>                      Sexual  Seed Disperal Dist  Vegetative   Sprout Age  Post-Fire
+>> Name      Longevity  Maturity  Effective  Maximum  Reprod Prob  Min   Max   Regen
+>> ----      ---------  --------  ---------  -------  -----------  ----------  --------
+crypjapo     300         5         73         300     0.5          0      60	none
+chamobtu     400         12       183        1000     0.5          5     100	resprout
+pinudens     300         40        12         275     0.5          0      60	none
+querserr     400         25        10         290     0.2          0      74	resprout

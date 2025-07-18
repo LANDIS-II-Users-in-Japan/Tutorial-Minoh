@@ -1,0 +1,452 @@
+---
+title: "2. 入力データを作成する"
+author: "Haga, Chihiro"
+format: html
+---
+
+## 準備
+
+ライブラリの読み込み
+
+```{r}
+# Utils
+library(here)
+# テーブルデータの加工・可視化用
+library(tidyverse)
+# 日本語フォントを文字化けさせない
+# remotes::install_github("Gedevan-Aleksizde/fontregisterer", upgrade = "never")
+library(fontregisterer)
+sans <- fontregisterer::get_standard_ja_fonts()['sans']
+# 可視化のデフォルトテーマを設定
+ggplot2::theme_set(
+  theme_minimal(base_family = sans)
+)
+# GIS用
+library(terra)
+library(sf)
+library(tmap)
+```
+
+パスの設定
+
+```{r}
+root_dir <- here::here()
+data_dir <- file.path(root_dir, "data")
+output_dir <- file.path(root_dir, "output", "2025-07-18")
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+```
+
+## Initial Communities Mapを作成する
+
+事前準備
+
+1.  国土数値情報 国有林野のページから、大阪府の2019年のデータをダウンロードする。
+2.  ./data/forestにzipファイルを保存し、解凍する
+
+箕面の国有林のみのデータを取得する
+
+```{r}
+forest_sf <- sf::st_read(file.path(data_dir, 'forest', 
+                                   'A45-19_27_GML', 'A45-19_27.geojson')) %>% 
+  dplyr::filter(A45_013 == '箕面') %>% 
+  # 第一樹種が記録されていないポリゴンは削除
+  dplyr::filter(!is.na(A45_015)) %>% 
+  # m3/haを計算する
+  mutate(volha = A45_012 / A45_027)
+forest_sf
+```
+
+樹種（第一樹種, A45_015）の空間分布
+
+```{r}
+tmap::tmap_mode(mode = 'view')
+tmap::tm_shape(forest_sf) +
+  tmap::tm_fill(fill = 'A45_015')
+```
+
+樹齢（最新林齢, A45_017）の空間分布
+
+```{r}
+tmap::tmap_mode(mode = 'view')
+tmap::tm_shape(forest_sf) +
+  tmap::tm_fill(fill = 'A45_017')
+```
+
+単位面積あたりの蓄積量の空間分布
+
+```{r}
+tmap::tmap_mode(mode = 'view')
+tmap::tm_shape(forest_sf) +
+  tmap::tm_fill(fill = 'volha')
+```
+
+樹種別の林齢の分布
+
+```{r, fig.width=8, fig.height=6}
+forest_sf %>% 
+  ggplot(aes(x = A45_017)) +
+  geom_histogram() +
+  labs(title = '第一樹種',
+       x = '最新林齢 (A45_017)',
+       y = '小班数') +
+  facet_wrap(~A45_015)
+
+forest_sf %>% 
+  filter(!is.na(A45_018)) %>% 
+  ggplot(aes(x = A45_020)) +
+  geom_histogram() +
+  labs(title = '第二樹種',
+       x = '最新林齢 (A45_017)',
+       y = '小班数') +
+  facet_wrap(~A45_018)
+
+forest_sf %>% 
+  filter(!is.na(A45_021)) %>% 
+  ggplot(aes(x = A45_023)) +
+  geom_histogram() +
+  labs(title = '第三樹種',
+       x = '最新林齢 (A45_017)',
+       y = '小班数') +
+  facet_wrap(~A45_021)
+```
+
+今回は、以下の樹種のみ計算してみる
+
+-   スギ (*Cryptomeria japonica* (L.f.) D.Don): crypjapo
+
+-   ヒノキ (*Chamaecyparis obtusa* (Siebold et Zucc.) Endl.): chamobtu
+
+-   アカマツ (*Pinus densiflora* Siebold et Zucc.): pinudens
+
+-   コナラ (*Quercus serrata* Murray): querserr
+
+【チュートリアル用に話を簡単にするための強めの仮定】各小班では、樹種1, 2, 3が均等に分布している
+
+```{r}
+forest_fix_sf <- forest_sf %>% 
+  mutate(liiname1 = case_when(A45_015 == 'スギ' ~ 'crypjapo',
+                              A45_015 == 'ヒノキ' ~ 'chamobtu',
+                              A45_015 == 'アカマツ' ~ 'pinudens',
+                              A45_015 == 'コナラ' ~ 'querserr',
+                              TRUE ~ NA),
+         liiage1 = case_when(!is.na(liiname1) ~ A45_017,
+                             TRUE ~ NA),
+         volha1 = case_when(!is.na(liiname1) ~ volha / 3,
+                            TRUE ~ NA),
+         liiname2 = case_when(A45_018 == 'スギ' ~ 'crypjapo',
+                              A45_018 == 'ヒノキ' ~ 'chamobtu',
+                              A45_018 == 'アカマツ' ~ 'pinudens',
+                              A45_018 == 'コナラ' ~ 'querserr',
+                              TRUE ~ NA),
+         liiage2 = case_when(!is.na(liiname2) ~ A45_020,
+                             TRUE ~ NA),
+         volha2 = case_when(!is.na(liiname2) ~ volha / 3,
+                            TRUE ~ NA),
+         liiname3 = case_when(A45_021 == 'スギ' ~ 'crypjapo',
+                              A45_021 == 'ヒノキ' ~ 'chamobtu',
+                              A45_021 == 'アカマツ' ~ 'pinudens',
+                              A45_021 == 'コナラ' ~ 'querserr',
+                              TRUE ~ NA),
+         liiage3 = case_when(!is.na(liiname3) ~ A45_023,
+                             TRUE ~ NA),
+         volha3 = case_when(!is.na(liiname3) ~ volha / 3,
+                            TRUE ~ NA)) %>% 
+  select(A45_001, 
+         liiname1, liiage1, volha1, 
+         liiname2, liiage2, volha2, 
+         liiname3, liiage3, volha3) %>% 
+  filter(!(is.na(liiname1) & is.na(liiname2) & is.na(liiname3))) %>% 
+  # Initial community map用のmap-codeを付与する
+  mutate(mapcode = 1:nrow(.))
+write_csv(st_drop_geometry(forest_fix_sf), 
+          file.path(output_dir, 'forest-register-data-minoh.csv'))
+forest_fix_sf
+```
+
+```{r}
+tmap::tm_shape(forest_fix_sf) +
+  tmap::tm_fill(fill = 'mapcode')
+```
+
+縦長のデータに変換
+
+```{r}
+sp1 <- forest_fix_sf %>% 
+  st_drop_geometry() %>% 
+  select(mapcode, liiname1, liiage1, volha1) %>% 
+  rename(c(liiname = 'liiname1',
+           liiage = 'liiage1',
+           volha = 'volha1'))
+sp2 <- forest_fix_sf %>% 
+  st_drop_geometry() %>% 
+  select(mapcode, liiname2, liiage2, volha2) %>% 
+  rename(c(liiname = 'liiname2',
+           liiage = 'liiage2',
+           volha = 'volha2'))
+sp3 <- forest_fix_sf %>% 
+  st_drop_geometry() %>% 
+  select(mapcode, liiname3, liiage3, volha3) %>% 
+  rename(c(liiname = 'liiname3',
+           liiage = 'liiage3',
+           volha = 'volha3'))
+initial_community_vha_df <- bind_rows(sp1, sp2, sp3) %>% 
+  arrange(mapcode) %>% 
+  na.omit()
+knitr::kable(head(initial_community_vha_df))
+```
+
+樹種・樹齢・蓄積量から、地上部バイオマスを推定する
+
+![](images/clipboard-3098494832.png)
+
+出典: <https://www.nies.go.jp/gio/aboutghg/>
+
+![](images/clipboard-865116116.png)
+
+参考: <https://www.ffpri.go.jp/research/dept/22climate/kyuushuuryou/documents/page1-2-per-a-tree.pdf>
+
+```{r}
+params_df <- data.frame(list(
+  liiname = c('crypjapo', 'chamobtu', 'pinudens', 'querserr'),
+  bef = c(1.23, 1.24, 1.23, 1.26), 
+  D = c(0.31, 0.41, 0.45, 0.62) # t-d.w/m3
+))
+
+initial_community_df <- initial_community_vha_df %>% 
+  left_join(params_df, by = 'liiname') %>% 
+  # 地上部バイオマス(above ground biomass, agb)を計算
+  # t.dw/ha --> g-biomass.dw/ha --> g-biomass.dw/m2
+  mutate(agb_gm2 = volha * D * bef * 10^6 * 10^-4) %>% 
+  arrange(mapcode)
+knitr::kable(head(initial_community_df))
+```
+
+樹齢-バイオマスの曲線を書いてみる
+
+```{r}
+initial_community_df %>% 
+  ggplot(aes(x = liiage, y = agb_gm2, color = liiname)) +
+  geom_point() +
+  labs(x = 'Age', y = 'Aboveground Biomass (g.dw / m2)')
+```
+
+LANDIS-IIの入力用のCSVを保存する
+
+```{r}
+initial_community_df %>% 
+  select(mapcode, liiname, liiage, agb_gm2) %>% 
+  write_csv(file.path(output_dir, 'initial-community-minoh-v0.csv'))
+```
+
+Initial communityのmapcodeを示したラスタデータを作成する
+
+```{r}
+tmp <- forest_fix_sf %>% 
+  select(mapcode) %>% 
+  # 投影座標系 (JGD2011, 平面直角座標系 第6系)
+  sf::st_transform(crs = 'EPSG:6674') %>% 
+  # terra packageのvect型に変換
+  terra::vect()
+
+# 50m解像度の空のラスタを作成する
+tmp_rast <- tmp %>% 
+  terra::rast(res = 50) # 投影座標系なので単位はm
+
+# mapcode列をラスタに焼き込むする
+initial_community_rast <- terra::rasterize(tmp, tmp_rast, field='mapcode')
+writeRaster(initial_community_rast, file.path(output_dir, 'initial-community-minoh-v0.tif'),
+            datatype='INT8S', NAflag=0, overwrite=TRUE)
+
+tmap::tm_shape(initial_community_rast) +
+  tm_raster()
+```
+
+## Ecoregion Mapを作成する
+
+本来ならば、気候・土壌など植物の生育に関係する環境条件に応じて空間をクラスタリングすべきところだが、チュートリアルではエイヤ！と2つのエコリージョンに分割する。全く意味はないトイデータである。
+
+```{r}
+eco_sf <- forest_fix_sf %>% 
+  select(mapcode) %>% 
+  mutate(eco_mapcode = if_else(mapcode < 150, 1, 2)) %>% 
+  # 投影座標系 (JGD2011, 平面直角座標系 第6系)
+  sf::st_transform(crs = 'EPSG:6674') %>% 
+  # terra packageのvect型に変換
+  terra::vect()
+
+tmap::tm_shape(eco_sf) +
+  tmap::tm_fill(fill = 'eco_mapcode')
+```
+
+```{r}
+eco_rast <- terra::rasterize(eco_sf, tmp_rast, field='eco_mapcode')
+writeRaster(eco_rast, file.path(output_dir, 'ecoregion-minoh-v0.tif'),
+            datatype='INT8S', NAflag=0, overwrite=TRUE)
+
+tmap::tm_shape(eco_rast) +
+  tmap::tm_raster()
+```
+
+## Biomass Harvest用にManagement / Stands Mapを作成する
+
+-   Stands Map: 小班と同義と考える
+
+-   Management map: 施業方針が同一のStandsの集合体。今回はStandsが偶数 or 奇数で分けてみる
+
+```{r}
+harvest_sf <- forest_fix_sf %>% 
+  select(mapcode) %>% 
+  mutate(stands_mapcode = mapcode) %>% # mapcodeは小班ごとに付与したIDだったので、継承する
+  mutate(management_mapcode = if_else(stands_mapcode %% 2 == 0, 1, 2)) %>%
+  # 投影座標系 (JGD2011, 平面直角座標系 第6系)
+  sf::st_transform(crs = 'EPSG:6674') %>% 
+  # terra packageのvect型に変換
+  terra::vect()
+
+tmap::tm_shape(harvest_sf) +
+  tmap::tm_fill(fill = 'management_mapcode')
+```
+
+Stands map
+
+```{r}
+stands_rast <- terra::rasterize(harvest_sf, tmp_rast, field='stands_mapcode')
+writeRaster(stands_rast, file.path(output_dir, 'stands-minoh-v0.tif'),
+            datatype='INT8S', NAflag=0, overwrite=TRUE)
+
+tmap::tm_shape(stands_rast) +
+  tmap::tm_raster()
+```
+
+Management map
+
+```{r}
+management_rast <- terra::rasterize(harvest_sf, tmp_rast, field='management_mapcode')
+writeRaster(management_rast, file.path(output_dir, 'management-minoh-v0.tif'),
+            datatype='INT8S', NAflag=0, overwrite=TRUE)
+
+tmap::tm_shape(management_rast) +
+  tmap::tm_raster()
+```
+
+### Biomass Succession用にパラメータを設定する
+
+Year,EcoregionName,SpeciesCode別に、
+
+-   ProbEstablish
+
+-   ProbMortality
+
+-   ANPPmax
+
+-   BiomassMax
+
+を設定する必要がある。
+
+チュートリアルでは、森林簿のデータからエイやと決める。
+
++---------------+---------------------------------------------------------------------------------+
+| 変数名        | チュートリアルでの方針                                                          |
++===============+=================================================================================+
+| ProbEstablish | Expert judge推奨                                                                |
+|               |                                                                                 |
+|               | スギ・ヒノキは一律0.001, その他の樹種はエコリージョン別の出現頻度にしてみる。   |
++---------------+---------------------------------------------------------------------------------+
+| ProbMortality | Expert judge推奨                                                                |
+|               |                                                                                 |
+|               | 0.2で一定にする                                                                 |
++---------------+---------------------------------------------------------------------------------+
+| ANPPmax       | <https://www.jstage.jst.go.jp/article/agrmet/63/1/63_1_33/_pdf/-char/ja> を参照 |
++---------------+---------------------------------------------------------------------------------+
+| BiomassMax    | 森林簿の最大値 x 5で設定                                                        |
++---------------+---------------------------------------------------------------------------------+
+
+```{r}
+agb_by_eco_df <- initial_community_df %>% 
+  mutate(eco_mapcode = if_else(mapcode < 150, 1, 2)) %>% 
+  group_by(eco_mapcode, liiname) %>% 
+  summarise(agb_gm2_max = max(agb_gm2, na.rm=TRUE),
+            agb_gm2_mean = mean(agb_gm2, na.rm=TRUE),
+            agb_gm2_sd = sd(agb_gm2, na.rm=TRUE),
+            n = n(),
+            .groups = 'drop')
+
+agb_by_eco_df %>% 
+  ggplot(aes(x = liiname, y = agb_gm2_mean, 
+             fill = factor(eco_mapcode))) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  labs(x = 'Species', y = 'AGB (g.dw/m2)',
+       title = 'Mean AGB')
+
+agb_by_eco_df %>% 
+  ggplot(aes(x = liiname, y = agb_gm2_max, 
+             fill = factor(eco_mapcode))) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  labs(x = 'Species', y = 'AGB (g.dw/m2)',
+       title = 'Max AGB')
+
+agb_by_eco_df %>% 
+  ggplot(aes(x = liiname, y = n, 
+             fill = factor(eco_mapcode))) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  labs(x = 'Species', y = 'N',
+       title = 'N of cohorts')
+
+
+```
+
+ProbEstablish
+
+```{r}
+n_stands_by_eco_df <- forest_fix_sf %>% 
+  mutate(eco_mapcode = if_else(mapcode < 150, 1, 2)) %>% 
+  st_drop_geometry() %>% 
+  group_by(eco_mapcode) %>% 
+  summarise(n_stands = n(), .groups = 'drop')
+
+pest_df <- agb_by_eco_df %>% 
+  select(eco_mapcode, liiname, n) %>% 
+  left_join(n_stands_by_eco_df, by = 'eco_mapcode') %>% 
+  mutate(ProbEstablish = case_when(liiname %in% c('crypjapo', 'chamobtu') ~ 0.001,
+                                   TRUE ~ round(n / n_stands, 3))) %>% 
+  select(eco_mapcode, liiname, ProbEstablish)
+knitr::kable(pest_df)
+```
+
+ANPPmax
+
+```{r}
+anppmax_df <- agb_by_eco_df %>% 
+  select(eco_mapcode, liiname) %>% 
+  mutate(ANPPmax = case_when(liiname %in% c('crypjapo', 'chamobtu', 'pinudens') ~ 742,
+                             liiname == 'querserr' ~ 986))
+knitr::kable(anppmax_df)
+```
+
+BiomassMax
+
+```{r}
+biomassmax_df <- agb_by_eco_df %>% 
+  select(eco_mapcode, liiname, agb_gm2_max) %>% 
+  mutate(BiomassMax = agb_gm2_max * 5) %>% 
+  select(eco_mapcode, liiname, BiomassMax)
+knitr::kable(biomassmax_df)
+```
+
+全体を統合
+
+```{r}
+biomass_succession_params_df <- pest_df %>% 
+  mutate(Year = 0,
+         ProbMortality = 0.2) %>% 
+  left_join(anppmax_df, by = c('eco_mapcode', 'liiname')) %>% 
+  left_join(biomassmax_df, by = c('eco_mapcode', 'liiname')) %>% 
+  rename(c(EcoregionName = 'eco_mapcode',
+           SpeciesCode = 'liiname')) %>% 
+  select(Year,EcoregionName,SpeciesCode,ProbEstablish,ProbMortality,ANPPmax,BiomassMax)
+write_csv(biomass_succession_params_df, 
+          file.path(output_dir, 'biomass-succession-spp-ecoregion-data-minoh-v0.csv'))
+knitr::kable(biomass_succession_params_df)
+```
