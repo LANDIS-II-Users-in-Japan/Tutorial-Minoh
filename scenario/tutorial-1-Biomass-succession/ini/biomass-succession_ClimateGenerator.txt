@@ -1,10 +1,10 @@
 LandisData "Climate Config"				
 		
-ClimateTimeSeries			Monthly_AverageAllYears
-ClimateFile				./input/PRISM_data_AFRI_4.18.13_v2.csv
+ClimateTimeSeries			Daily_AverageAllYears
+ClimateFile				./input/climate-daily-amedas-nose-2010-2019.csv
 
-SpinUpClimateTimeSeries			Monthly_AverageAllYears
-SpinUpClimateFile			./input/PRISM_data_AFRI_4.18.13_v2.csv
+SpinUpClimateTimeSeries			Daily_AverageAllYears
+SpinUpClimateFile			./input/climate-daily-amedas-nose-2010-2019.csv
 
 GenerateClimateOutputFiles		yes
 UsingFireClimate			no  << Optional parameter; default is no.

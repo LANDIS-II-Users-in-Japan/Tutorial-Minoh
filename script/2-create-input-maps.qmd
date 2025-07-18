@@ -237,6 +237,10 @@ LANDIS-IIの入力用のCSVを保存する
 ```{r}
 initial_community_df %>% 
   select(mapcode, liiname, liiage, agb_gm2) %>% 
+  rename(c(MapCode = "mapcode",
+           SpeciesName = "liiname",
+           CohortAge = "liiage",
+           CohortBiomass = "agb_gm2")) %>% 
   write_csv(file.path(output_dir, 'initial-community-minoh-v0.csv'))
 ```
 
@@ -252,12 +256,12 @@ tmp <- forest_fix_sf %>%
 
 # 50m解像度の空のラスタを作成する
 tmp_rast <- tmp %>% 
-  terra::rast(res = 50) # 投影座標系なので単位はm
+  terra::rast(res = 100) # 投影座標系なので単位はm
 
 # mapcode列をラスタに焼き込むする
 initial_community_rast <- terra::rasterize(tmp, tmp_rast, field='mapcode')
 writeRaster(initial_community_rast, file.path(output_dir, 'initial-community-minoh-v0.tif'),
-            datatype='INT8S', NAflag=0, overwrite=TRUE)
+            datatype='INT4S', NAflag=0, overwrite=TRUE)
 
 tmap::tm_shape(initial_community_rast) +
   tm_raster()
@@ -283,7 +287,7 @@ tmap::tm_shape(eco_sf) +
 ```{r}
 eco_rast <- terra::rasterize(eco_sf, tmp_rast, field='eco_mapcode')
 writeRaster(eco_rast, file.path(output_dir, 'ecoregion-minoh-v0.tif'),
-            datatype='INT8S', NAflag=0, overwrite=TRUE)
+            datatype='INT4S', NAflag=0, overwrite=TRUE)
 
 tmap::tm_shape(eco_rast) +
   tmap::tm_raster()
@@ -300,12 +304,14 @@ tmap::tm_shape(eco_rast) +
 ```{r}
 
 amedas_df <- readr::read_csv(file.path(data_dir, 'amedas', 'amedas-nose-2010-2019-daily.csv'), 
-                             skip = 5, col_names = FALSE) %>% 
-  select(X1, X2, X5) %>% 
+                             skip = 6, col_names = FALSE) %>% 
+  select(X1, X2, X5, X8) %>% 
   rename(c(date = 'X1',
-           temp = 'X2',
-           precip = 'X5')) %>% 
-  pivot_longer(cols = c(temp, precip),
+           Tmax = 'X2',
+           Tmin = 'X5',
+           precip = 'X8')) %>% 
+  mutate(precip = precip * 0.1) %>% # mm --> cm
+  pivot_longer(cols = c(Tmax, Tmin, precip),
                names_to = 'Variable',
                values_to = 'value')
 
@@ -340,7 +346,8 @@ knitr::kable(head(climate_df, 24))
 harvest_sf <- forest_fix_sf %>% 
   select(mapcode) %>% 
   mutate(stands_mapcode = mapcode) %>% # mapcodeは小班ごとに付与したIDだったので、継承する
-  mutate(management_mapcode = if_else(stands_mapcode %% 2 == 0, 1, 2)) %>%
+  mutate(management_mapcode = 
+           if_else(stands_mapcode %% 2 == 0, 1, 2)) %>%
   # 投影座標系 (JGD2011, 平面直角座標系 第6系)
   sf::st_transform(crs = 'EPSG:6674') %>% 
   # terra packageのvect型に変換
@@ -355,7 +362,7 @@ Stands map
 ```{r}
 stands_rast <- terra::rasterize(harvest_sf, tmp_rast, field='stands_mapcode')
 writeRaster(stands_rast, file.path(output_dir, 'stands-minoh-v0.tif'),
-            datatype='INT8S', NAflag=0, overwrite=TRUE)
+            datatype='INT4S', NAflag=0, overwrite=TRUE)
 
 tmap::tm_shape(stands_rast) +
   tmap::tm_raster()
@@ -366,7 +373,7 @@ Management map
 ```{r}
 management_rast <- terra::rasterize(harvest_sf, tmp_rast, field='management_mapcode')
 writeRaster(management_rast, file.path(output_dir, 'management-minoh-v0.tif'),
-            datatype='INT8S', NAflag=0, overwrite=TRUE)
+            datatype='INT4S', NAflag=0, overwrite=TRUE)
 
 tmap::tm_shape(management_rast) +
   tmap::tm_raster()
@@ -406,7 +413,7 @@ Year,EcoregionName,SpeciesCode別に、
 
 ```{r}
 agb_by_eco_df <- initial_community_df %>% 
-  mutate(eco_mapcode = if_else(mapcode < 150, 1, 2)) %>% 
+  mutate(eco_mapcode = if_else(mapcode < 150, 101, 102)) %>% 
   group_by(eco_mapcode, liiname) %>% 
   summarise(agb_gm2_max = max(agb_gm2, na.rm=TRUE),
             agb_gm2_mean = mean(agb_gm2, na.rm=TRUE),
@@ -442,7 +449,7 @@ ProbEstablish
 
 ```{r}
 n_stands_by_eco_df <- forest_fix_sf %>% 
-  mutate(eco_mapcode = if_else(mapcode < 150, 1, 2)) %>% 
+  mutate(eco_mapcode = if_else(mapcode < 150, 101, 102)) %>% 
   st_drop_geometry() %>% 
   group_by(eco_mapcode) %>% 
   summarise(n_stands = n(), .groups = 'drop')
@@ -458,11 +465,13 @@ knitr::kable(pest_df)
 
 ANPPmax
 
+gC/m2/y --> g-biomass.dw/m2/y
+
 ```{r}
 anppmax_df <- agb_by_eco_df %>% 
   select(eco_mapcode, liiname) %>% 
-  mutate(ANPPmax = case_when(liiname %in% c('crypjapo', 'chamobtu', 'pinudens') ~ 742,
-                             liiname == 'querserr' ~ 986))
+  mutate(ANPPmax = case_when(liiname %in% c('crypjapo', 'chamobtu', 'pinudens') ~ 742/0.5,
+                             liiname == 'querserr' ~ 986/0.5))
 knitr::kable(anppmax_df)
 ```
 
