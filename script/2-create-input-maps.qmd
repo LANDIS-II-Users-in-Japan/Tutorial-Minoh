@@ -289,6 +289,47 @@ tmap::tm_shape(eco_rast) +
   tmap::tm_raster()
 ```
 
+## 気候データを準備する
+
+-   LANDIS-II v8から、全てのExtensionで気候データの入力方法が統一された
+
+-   これに伴い、気候データを利用しないBiomass Successionでも入力することが必須になった
+
+-   今回は能勢のアメダスの日平均気温・日降水量のデータを使うことにする
+
+```{r}
+
+amedas_df <- readr::read_csv(file.path(data_dir, 'amedas', 'amedas-nose-2010-2019-daily.csv'), 
+                             skip = 5, col_names = FALSE) %>% 
+  select(X1, X2, X5) %>% 
+  rename(c(date = 'X1',
+           temp = 'X2',
+           precip = 'X5')) %>% 
+  pivot_longer(cols = c(temp, precip),
+               names_to = 'Variable',
+               values_to = 'value')
+
+ggplot(amedas_df, aes(x = date, y = value, group = Variable)) +
+  geom_line() +
+  facet_wrap(~Variable, scales = 'free')
+```
+
+Year, Month, Day, Variable, Ecoregion1, Ecoregion2 の形式にしたい。
+
+See, <https://github.com/LANDIS-II-Foundation/Library-Climate/blob/master/docs/LANDIS-II%20Climate%20Library%20v5.0%20User%20Guide.pdf>
+
+```{r}
+climate_df <- amedas_df %>% 
+  mutate(Year = lubridate::year(date),
+         Month = lubridate::month(date),
+         Day = lubridate::day(date)) %>% 
+  rename(c(`101` = 'value')) %>% 
+  mutate(`102` = `101`) %>% 
+  select(Year, Month, Day, Variable, `101`, `102`)
+write_csv(climate_df, file.path(output_dir, 'climate-daily-amedas-nose-2010-2019.csv'))
+knitr::kable(head(climate_df, 24))
+```
+
 ## Biomass Harvest用にManagement / Stands Mapを作成する
 
 -   Stands Map: 小班と同義と考える
