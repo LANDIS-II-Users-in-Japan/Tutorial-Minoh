@@ -1,0 +1,11 @@
+# R project files
+.Rhistory
+.Rproj.user
+# macOS files
+.DS_Store
+# Data files
+/data
+/output
+# Notebooks
+*.html
+/script/*/
